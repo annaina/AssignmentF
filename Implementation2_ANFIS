@@ -1,0 +1,62 @@
+%% HYBRID INTELLIGENT SYSTEM - ANFIS TUNING
+
+%% 1. Load and preprocess data
+data = readtable('auto-mpg.csv', 'VariableNamingRule', 'preserve');
+data = rmmissing(data);
+
+% Select inputs and output
+inputs = data{:, {'cylinders', 'displacement', 'horsepower', 'weight', 'acceleration'}};
+output = data{:, 'mpg'};
+
+% Normalize
+inputs = rescale(inputs);
+output = rescale(output);
+
+% Combine input-output for ANFIS
+data_all = [inputs output];
+
+% Split into training and testing
+n = size(data_all, 1);
+idx = randperm(n);
+split = round(0.7 * n);
+trainData = data_all(idx(1:split), :);
+testData = data_all(idx(split+1:end), :);
+X_test = testData(:, 1:end-1);
+Y_test = testData(:, end);
+
+%% 2. Generate initial FIS using genfis1
+% 3 MFs per input, gaussian membership functions
+nMFs = 3;
+mfType = 'gaussmf';
+init_fis = genfis1(trainData, nMFs, mfType);
+
+%% 3. Train with ANFIS
+trainOpts = [100, 0, 0.01, 0.9, 1.1]; % [Epochs, ErrorGoal, StepSize, DecreaseRate, IncreaseRate]
+displayOpts = [0, 0, 1, 1];          % Suppress command line output
+
+[anfis_fis, trainError] = anfis(trainData, init_fis, trainOpts, displayOpts);
+
+%% 4. Evaluate
+Y_pred = evalfis(X_test, anfis_fis);
+mse = mean((Y_pred - Y_test).^2);
+rmse = sqrt(mse);
+
+fprintf("ANFIS-Tuned FIS MSE: %.4f\n", mse);
+fprintf("ANFIS-Tuned FIS RMSE: %.4f\n", rmse);
+
+%% 5. Plot
+figure;
+plot(Y_test, 'b-o', 'DisplayName', 'Actual Output');
+hold on;
+plot(Y_pred, 'r-x', 'DisplayName', 'ANFIS Output');
+legend('Location', 'best');
+xlabel('Sample Index'); ylabel('Rescaled MPG');
+title('ANFIS Performance');
+grid on;
+
+%% 6. Optional: plot training error
+figure;
+plot(trainError, 'LineWidth', 2);
+xlabel('Epoch'); ylabel('Training Error (MSE)');
+title('ANFIS Training Error');
+grid on;
