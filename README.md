@@ -1,5 +1,3 @@
-# README
-
 ## Hybrid Intelligent Systems - MATLAB Code
 
 This repository contains the MATLAB code for the Hybrid Intelligent Systems assignment.
