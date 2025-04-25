@@ -1,0 +1,66 @@
+%% HYBRID INTELLIGENT SYSTEM - GA TUNING OF FIS (Final Fix with genfis2)
+% Uses subtractive clustering, evaluates performance before/after GA
+
+%% 1. Load and preprocess data
+data = readtable('auto-mpg.csv', 'VariableNamingRule', 'preserve');
+data = rmmissing(data);
+
+% Select inputs and output
+inputs = data{:, {'cylinders', 'displacement', 'horsepower', 'weight', 'acceleration'}};
+output = data{:, 'mpg'};
+
+% Rescale inputs and output to [0, 1]
+inputs = rescale(inputs);
+output = rescale(output);
+
+% Split into training and testing sets
+n = size(inputs, 1);
+idx = randperm(n);
+split = round(0.7 * n);
+
+X_train = inputs(idx(1:split), :);
+Y_train = output(idx(1:split), :);
+X_test = inputs(idx(split+1:end), :);
+Y_test = output(idx(split+1:end), :);
+
+%% 2. Generate FIS using Subtractive Clustering
+% Radius controls the number of rules (lower radius = more rules)
+fis = genfis2(X_train, Y_train, 0.5);  % Try 0.4 or 0.3 if underfitting
+
+%% 3. Get tunable parameters and GA options
+[params, info] = getTunableSettings(fis);
+
+ga_opts = tunefisOptions('Method', 'ga', 'OptimizationType', 'tuning');
+ga_opts.MethodOptions = optimoptions('ga', ...
+    'Display', 'iter', ...
+    'MaxGenerations', 100, ...
+    'PopulationSize', 50);
+
+%% 4. Evaluate original FIS
+Y_fis = evalfis(fis, X_test);
+mse_fis = mean((Y_fis - Y_test).^2);
+
+%% 5. Tune FIS using Genetic Algorithm
+fis_ga = tunefis(fis, params, X_train, Y_train, ga_opts);
+
+%% 6. Evaluate tuned FIS
+Y_pred = evalfis(fis_ga, X_test);
+mse_ga = mean((Y_pred - Y_test).^2);
+rmse_ga = sqrt(mse_ga);
+
+%% 7. Report results
+fprintf("Initial FIS MSE: %.4f\n", mse_fis);
+fprintf("GA-Tuned FIS MSE: %.4f\n", mse_ga);
+fprintf("GA-Tuned FIS RMSE: %.4f\n", rmse_ga);
+
+%% 8. Plot results
+figure;
+plot(Y_test, 'b-o', 'DisplayName', 'Actual Output');
+hold on;
+plot(Y_fis, 'g-.s', 'DisplayName', 'Initial FIS Output');
+plot(Y_pred, 'r-x', 'DisplayName', 'GA-Tuned FIS Output');
+legend('Location', 'best');
+xlabel('Sample Index');
+ylabel('Rescaled MPG');
+title('FIS Performance: Initial vs GA-Tuned');
+grid on;
