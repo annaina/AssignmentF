@@ -1,0 +1,121 @@
+%% Implementation 1: Neuro-Fuzzy Controller Training
+% Hybrid Intelligent System Assignment
+
+clear; close all; clc;
+
+%% Load the FIS
+fis = readfis('tank.fis');
+figure;
+plotfis(fis);
+title('Original FIS Structure');
+
+%% Generate Random Input Data
+n_samples = 1200;
+level_range = [-1.1 1.1];
+rate_range = [-0.35 0.35];
+
+rng(42); % For reproducibility
+level = (level_range(2) - level_range(1)) .* rand(n_samples,1) + level_range(1);
+rate = (rate_range(2) - rate_range(1)) .* rand(n_samples,1) + rate_range(1);
+
+inputData = [level, rate];
+
+%% Generate Valve Output Data Using the FIS
+valve = zeros(n_samples,1);
+for i = 1:n_samples
+    valve(i) = evalfis(fis, inputData(i,:));
+end
+
+%% Split into Training and Testing Sets
+train_ratio = 0.8;
+n_train = floor(train_ratio * n_samples);
+
+idx = randperm(n_samples);
+train_idx = idx(1:n_train);
+test_idx = idx(n_train+1:end);
+
+X_train = inputData(train_idx,:);
+y_train = valve(train_idx);
+
+X_test = inputData(test_idx,:);
+y_test = valve(test_idx);
+
+%% Create Initial FIS for ANFIS
+initFIS = genfis1([X_train y_train], 3, 'gbellmf'); % 6 membership functions per input
+1;
+figure;
+plotfis(initFIS);
+title('Initial FIS Structure (Before Training)');
+
+%% Train Neuro-Fuzzy Inference System (ANFIS)
+anfisOptions = anfisOptions('InitialFIS',initFIS,...
+    'EpochNumber', 100,...
+    'ErrorGoal', 0,...
+    'DisplayANFISInformation', 1,...
+    'DisplayErrorValues', 1,...
+    'DisplayStepSize', 1,...
+    'DisplayFinalResults', 1,...
+    'ValidationData', [X_test y_test]);
+
+[trainedFIS, trainError, stepSize, chkFIS, chkError] = anfis([X_train y_train], anfisOptions);
+
+%% Plot Learning Curves
+figure;
+plot(1:length(trainError), trainError, '-b', 1:length(chkError), chkError, '-r');
+legend('Training Error', 'Validation Error');
+xlabel('Epochs');
+ylabel('Error');
+title('ANFIS Training vs Validation Error');
+
+%% Surface Plot Comparison (Original vs Trained FIS)
+[level_grid, rate_grid] = meshgrid(linspace(level_range(1), level_range(2), 50), ...
+                                   linspace(rate_range(1), rate_range(2), 50));
+input_grid = [level_grid(:), rate_grid(:)];
+
+valve_fis = evalfis(fis, input_grid);
+valve_trained = evalfis(trainedFIS, input_grid);
+
+valve_fis = reshape(valve_fis, size(level_grid));
+valve_trained = reshape(valve_trained, size(level_grid));
+
+figure;
+subplot(1,2,1);
+surf(level_grid, rate_grid, valve_fis);
+xlabel('Level'); ylabel('Rate'); zlabel('Valve');
+title('Original FIS Surface');
+
+subplot(1,2,2);
+surf(level_grid, rate_grid, valve_trained);
+xlabel('Level'); ylabel('Rate'); zlabel('Valve');
+title('Trained Neuro-FIS Surface');
+
+%% Test and Calculate Errors
+y_pred = evalfis(trainedFIS, X_test);
+
+mse_val = mean((y_test - y_pred).^2);
+rmse_val = sqrt(mse_val);
+mean_error = mean(y_test - y_pred);
+std_error = std(y_test - y_pred);
+
+fprintf('MSE: %.6f\n', mse_val);
+fprintf('RMSE: %.6f\n', rmse_val);
+fprintf('Mean Error: %.6f\n', mean_error);
+fprintf('Standard Deviation of Error: %.6f\n', std_error);
+
+%% Test Extrapolation (Outside Training Range)
+level_extrap = linspace(-2, 2, 20)';
+rate_extrap = linspace(-0.5, 0.5, 20)';
+input_extrap = [level_extrap, rate_extrap];
+
+valve_fis_extrap = evalfis(fis, input_extrap);
+valve_anfis_extrap = evalfis(trainedFIS, input_extrap);
+
+figure;
+plot(valve_fis_extrap, '-b', 'LineWidth',1.5);
+hold on;
+plot(valve_anfis_extrap, '--r', 'LineWidth',1.5);
+legend('FIS Output', 'Neuro-FIS Output');
+title('Extrapolation Test');
+xlabel('Test Point');
+ylabel('Valve Opening');
+grid on;
